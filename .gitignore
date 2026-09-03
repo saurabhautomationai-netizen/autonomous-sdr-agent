@@ -1,0 +1,22 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Environment / secrets
+.env
+
+# IDE
+.vscode/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+.pytest_cache/
+.coverage
+htmlcov/
