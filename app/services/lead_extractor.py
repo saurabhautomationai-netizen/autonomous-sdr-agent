@@ -1,10 +1,35 @@
 import json
 import httpx
+import ipaddress
+import socket
+from urllib.parse import urljoin, urlsplit
 
 from bs4 import BeautifulSoup
 from openai import OpenAI
 
-from app.config import OPENAI_API_KEY
+from app.config import OPENAI_API_KEY, OPENAI_MODEL
+
+
+class UnsafeExtractionURL(ValueError):
+    pass
+
+
+def validate_public_url(url: str) -> None:
+    parsed = urlsplit(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise UnsafeExtractionURL("Only public HTTP(S) URLs are allowed")
+    try:
+        addresses = {
+            item[4][0] for item in socket.getaddrinfo(
+                parsed.hostname, parsed.port or (443 if parsed.scheme == "https" else 80),
+                type=socket.SOCK_STREAM,
+            )
+        }
+    except (socket.gaierror, OSError) as error:
+        raise UnsafeExtractionURL("URL destination could not be validated") from error
+    for address in addresses:
+        if not ipaddress.ip_address(address).is_global:
+            raise UnsafeExtractionURL("Private or reserved destinations are not allowed")
 
 
 def fetch_html(url: str) -> str:
@@ -12,16 +37,26 @@ def fetch_html(url: str) -> str:
         "User-Agent": "Mozilla/5.0 AutonomousSDR/0.1"
     }
 
-    response = httpx.get(
-        url,
-        headers=headers,
-        timeout=15.0,
-        follow_redirects=True,
-    )
-
-    response.raise_for_status()
-
-    return response.text
+    current_url = url
+    try:
+        for _ in range(6):
+            validate_public_url(current_url)
+            response = httpx.get(
+                current_url, headers=headers, timeout=15.0, follow_redirects=False,
+            )
+            if response.is_redirect:
+                location = response.headers.get("location")
+                if not location:
+                    raise UnsafeExtractionURL("Redirect destination is missing")
+                current_url = urljoin(current_url, location)
+                continue
+            response.raise_for_status()
+            return response.text
+        raise UnsafeExtractionURL("Too many redirects")
+    except UnsafeExtractionURL:
+        raise
+    except httpx.HTTPError as error:
+        raise UnsafeExtractionURL("Unable to fetch the requested public URL") from error
 
 
 def extract_lead_from_url(url: str) -> dict:
@@ -79,7 +114,7 @@ def extract_lead_with_llm(html: str) -> dict:
     clean_text = html_to_clean_text(html)
 
     response = client.responses.create(
-        model="gpt-5-mini",
+        model=OPENAI_MODEL,
         input=[
             {
                 "role": "system",

@@ -6,12 +6,16 @@ __pycache__/
 
 # Environment / secrets
 .env
+.env.*
+!.env.example
 
 # IDE
 .vscode/
+.idea/
 
 # Logs
 *.log
+logs/
 
 # OS
 .DS_Store
@@ -20,3 +24,16 @@ Thumbs.db
 .pytest_cache/
 .coverage
 htmlcov/
+.ruff_cache/
+.mypy_cache/
+.tox/
+.nox/
+build/
+dist/
+*.egg-info/
+coverage.xml
+*.sqlite
+*.sqlite3
+
+# Local assessment evidence
+evidence/
